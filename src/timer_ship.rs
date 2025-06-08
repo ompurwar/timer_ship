@@ -17,6 +17,52 @@ use uuid::Uuid;
 /// Callback function type for timer expiration
 pub type TimerCallback = Box<dyn Fn(Uuid, String) + Send + Sync>;
 
+/// Information about an active timer for display purposes
+#[derive(Debug, Clone)]
+pub struct TimerInfo {
+    pub id: Uuid,
+    pub expires_at: u64,
+    pub data: String,
+    pub time_left_ms: u64,
+}
+
+impl TimerInfo {
+    /// Formats the time left in a human-readable format
+    pub fn format_time_left(&self) -> String {
+        let ms = self.time_left_ms;
+        
+        if ms == 0 {
+            return "Expired".to_string();
+        }
+        
+        let hours = ms / (1000 * 60 * 60);
+        let minutes = (ms % (1000 * 60 * 60)) / (1000 * 60);
+        let seconds = (ms % (1000 * 60)) / 1000;
+        let milliseconds = ms % 1000;
+        
+        if hours > 0 {
+            format!("{}h {}m {}s", hours, minutes, seconds)
+        } else if minutes > 0 {
+            format!("{}m {}s", minutes, seconds)
+        } else if seconds > 0 {
+            format!("{}s {}ms", seconds, milliseconds)
+        } else {
+            format!("{}ms", milliseconds)
+        }
+    }
+    
+    /// Formats the expiration time as a relative timestamp
+    pub fn format_expires_at(&self) -> String {
+        use std::time::UNIX_EPOCH;
+        
+        let expires_at_secs = self.expires_at / 1000;
+        let _expires_at_system = UNIX_EPOCH + std::time::Duration::from_secs(expires_at_secs);
+        
+        // For simplicity, just show the timestamp
+        format!("in {}", self.format_time_left())
+    }
+}
+
 /// Main timer management system with persistent operation logging
 #[derive(Clone)]
 pub struct TimerShip {
@@ -82,12 +128,12 @@ impl TimerShip {
                             match timer_ship.remove_timer(timer_id) {
                                 Ok(data) => {
                                     info!("Timer expired: ID {} : at: {}", timer_id, now);
-                                    
+
                                     // Call the expiration callback if provided
                                     if let (Some(callback), Some(data)) = (&timer_ship.callback, data) {
                                         callback(timer_id, data);
                                     }
-                                },
+                                }
                                 Err(e) => error!("Error removing expired timer: {}", e),
                             }
                         } else {
@@ -216,5 +262,46 @@ impl TimerShip {
             warn!("No data found for timer ID: {}", timer_id);
         }
         data
+    }
+
+    /// Lists all active timers with their information
+    pub fn list_active_timers(&self) -> Vec<TimerInfo> {
+        let current_time = current_time_ms();
+        let mut timer_infos = Vec::new();
+        
+        // Get all timers using the new public method
+        let timers = self.timers.get_all_timers();
+        
+        for timer in timers {
+            if let Some(data) = self.get_timer_data(timer.id) {
+                let time_left = if timer.expires_at > current_time {
+                    timer.expires_at - current_time
+                } else {
+                    0
+                };
+                
+                timer_infos.push(TimerInfo {
+                    id: timer.id,
+                    expires_at: timer.expires_at,
+                    data,
+                    time_left_ms: time_left,
+                });
+            }
+        }
+        
+        // Sort by expiration time (soonest first)
+        timer_infos.sort_by(|a, b| a.expires_at.cmp(&b.expires_at));
+        
+        timer_infos
+    }
+    
+    /// Gets the data associated with a timer ID
+    fn get_timer_data(&self, timer_id: Uuid) -> Option<String> {
+        self.timer_data.get_data(timer_id)
+    }
+    
+    /// Gets the count of active timers
+    pub fn active_timer_count(&self) -> usize {
+        self.timers.timer_count()
     }
 }

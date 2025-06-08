@@ -7,7 +7,7 @@ pub mod oplog;
 pub mod timer_ship;
 pub mod duration_parser;
 
-pub use timer_ship::{TimerShip, TimerCallback};
+pub use timer_ship::{TimerShip, TimerCallback, TimerInfo};
 pub use timer::Timer;
 pub use oplog::{LogEntry, LogOperation};
 pub use uuid::Uuid;

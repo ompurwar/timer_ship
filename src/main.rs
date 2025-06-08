@@ -1,4 +1,4 @@
-use timer_ship::{TimerShip, TimerCallback};
+use timer_ship::{TimerShip, TimerCallback, TimerInfo};
 use std::{io::{self, Write}, thread, time::Duration};
 use log::{info, error};
 use env_logger;
@@ -9,8 +9,9 @@ fn print_menu() {
     println!("═══════════════════════════════");
     println!("1. Set timer with duration");
     println!("2. List duration format examples");
-    println!("3. View active timers (not implemented)");
-    println!("4. Exit");
+    println!("3. List active timers");
+    println!("4. Remove specific timer");
+    println!("5. Exit");
     println!("\nDuration formats:");
     println!("  • Milliseconds: 100ms, 1500ms (integers only)");
     println!("  • Seconds: 1s, 2.5s, 30s");
@@ -47,11 +48,107 @@ fn show_duration_examples() {
     println!("  • '0.5h' - 30 minutes");
 }
 
+fn list_active_timers(timer_ship: &TimerShip) {
+    let timers = timer_ship.list_active_timers();
+    
+    if timers.is_empty() {
+        println!("\n📭 No active timers found.");
+        return;
+    }
+    
+    println!("\n📋 Active Timers ({} total):", timers.len());
+    println!("┌────────────────────────────────────────┬─────────────────┬──────────────────────────────────────────┐");
+    println!("│ Timer ID                               │ Time Left       │ Description                              │");
+    println!("├────────────────────────────────────────┼─────────────────┼──────────────────────────────────────────┤");
+    
+    for (index, timer) in timers.iter().enumerate() {
+        let id_short = format!("{}...{}", 
+            &timer.id.to_string()[..8], 
+            &timer.id.to_string()[timer.id.to_string().len()-4..]
+        );
+        
+        let time_left = timer.format_time_left();
+        let description = if timer.data.len() > 40 {
+            format!("{}...", &timer.data[..37])
+        } else {
+            timer.data.clone()
+        };
+        
+        let status_icon = if timer.time_left_ms == 0 { "🔴" } else { "⏰" };
+        
+        println!("│ {}{:<38} │ {:<15} │ {:<40} │", 
+            status_icon, id_short, time_left, description);
+        
+        if index < timers.len() - 1 {
+            println!("├────────────────────────────────────────┼─────────────────┼──────────────────────────────────────────┤");
+        }
+    }
+    
+    println!("└────────────────────────────────────────┴─────────────────┴──────────────────────────────────────────┘");
+    
+    // Show summary
+    let expired_count = timers.iter().filter(|t| t.time_left_ms == 0).count();
+    let active_count = timers.len() - expired_count;
+    
+    println!("\n📊 Summary: {} active, {} expired", active_count, expired_count);
+    
+    if expired_count > 0 {
+        println!("⚠️  Note: Expired timers will be processed shortly by the background thread.");
+    }
+}
+
+fn remove_timer_by_id(timer_ship: &TimerShip) {
+    let timers = timer_ship.list_active_timers();
+    
+    if timers.is_empty() {
+        println!("\n📭 No active timers to remove.");
+        return;
+    }
+    
+    // Show current timers first
+    list_active_timers(timer_ship);
+    
+    let timer_id_input = get_user_input("\nEnter timer ID (first 8 characters are enough): ");
+    
+    if timer_id_input.is_empty() {
+        println!("❌ Timer ID cannot be empty!");
+        return;
+    }
+    
+    // Find timer by partial ID match
+    let matching_timer = timers.iter().find(|timer| {
+        timer.id.to_string().starts_with(&timer_id_input) ||
+        timer.id.to_string() == timer_id_input
+    });
+    
+    match matching_timer {
+        Some(timer) => {
+            match timer_ship.remove_timer(timer.id) {
+                Ok(Some(data)) => {
+                    println!("✅ Timer removed successfully!");
+                    println!("   ID: {}", timer.id);
+                    println!("   Data: {}", data);
+                },
+                Ok(None) => {
+                    println!("⚠️  Timer was removed but no data was found.");
+                },
+                Err(e) => {
+                    println!("❌ Failed to remove timer: {}", e);
+                }
+            }
+        },
+        None => {
+            println!("❌ Timer not found. Please check the ID and try again.");
+            println!("💡 Tip: You can use just the first 8 characters of the timer ID.");
+        }
+    }
+}
+
 fn interactive_mode(timer_ship: &TimerShip) {
     loop {
         print_menu();
         
-        let choice = get_user_input("\nEnter your choice (1-4): ");
+        let choice = get_user_input("\nEnter your choice (1-5): ");
         
         match choice.as_str() {
             "1" => {
@@ -86,14 +183,17 @@ fn interactive_mode(timer_ship: &TimerShip) {
                 show_duration_examples();
             },
             "3" => {
-                println!("⚠️  List active timers feature not implemented yet.");
+                list_active_timers(timer_ship);
             },
             "4" => {
+                remove_timer_by_id(timer_ship);
+            },
+            "5" => {
                 println!("👋 Goodbye! Timers will continue running in background...");
                 break;
             },
             _ => {
-                println!("❌ Invalid choice. Please enter 1-4.");
+                println!("❌ Invalid choice. Please enter 1-5.");
             }
         }
         

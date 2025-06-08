@@ -76,6 +76,18 @@ impl Timers {
         }
         drop(local_timers);
     }
+
+    /// Gets all timers (clone of the internal vector)
+    pub fn get_all_timers(&self) -> Vec<Timer> {
+        let local_timers = self.timers.lock().expect("Failed to lock mutex");
+        local_timers.clone()
+    }
+    
+    /// Gets the count of timers
+    pub fn timer_count(&self) -> usize {
+        let local_timers = self.timers.lock().expect("Failed to lock mutex");
+        local_timers.len()
+    }
 }
 
 impl Default for Timers {
@@ -108,6 +120,18 @@ impl TimerData {
         let data = local_data.remove(&timer_id);
         drop(local_data);
         data
+    }
+    
+    /// Gets data for a specific timer ID
+    pub fn get_data(&self, timer_id: Uuid) -> Option<String> {
+        let local_data = self.data.lock().expect("Failed to lock mutex");
+        local_data.get(&timer_id).cloned()
+    }
+    
+    /// Gets the count of data entries
+    pub fn data_count(&self) -> usize {
+        let local_data = self.data.lock().expect("Failed to lock mutex");
+        local_data.len()
     }
 }
 
