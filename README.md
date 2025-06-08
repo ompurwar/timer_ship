@@ -166,7 +166,7 @@ The utility supports intuitive duration strings:
 
 ### Basic Usage
 ```rust
-use timer_util::TimerShip;
+use timer_ship::TimerShip;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create timer system with persistent log
@@ -182,7 +182,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ### With Expiration Callbacks
 ```rust
-use timer_util::{TimerShip, TimerCallback};
+use timer_ship::{TimerShip, TimerCallback};
 use uuid::Uuid;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -206,4 +206,111 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-This utility provides a robust foundation for any application that needs reliable, persistent timer functionality with automatic recovery capabilities.
+## Interactive CLI Example
+
+The project includes a full-featured interactive CLI that demonstrates all the timer functionality. You can run it in two modes:
+
+### Interactive Mode (Default)
+
+```bash
+cargo run
+```
+
+This launches an interactive menu-driven interface:
+
+```
+🚢 Timer Ship - Interactive CLI
+═══════════════════════════════
+1. Set timer with duration
+2. List duration format examples
+3. List active timers
+4. Remove specific timer
+5. Exit
+
+Duration formats:
+  • Milliseconds: 100ms, 1500ms (integers only)
+  • Seconds: 1s, 2.5s, 30s
+  • Minutes: 1m, 1.5m, 45m
+  • Hours: 1h, 2.5hr, 24hr
+═══════════════════════════════
+```
+
+#### Features of Interactive Mode:
+
+**1. Set Timer with Duration**
+- Enter human-readable durations like `"5s"`, `"1.5m"`, `"2hr"`
+- Add custom messages/descriptions
+- Get unique UUID for each timer
+- Real-time validation of duration formats
+
+**2. List Duration Format Examples**
+- Comprehensive table showing all supported formats
+- Examples with explanations
+- Tips for proper usage
+
+**3. List Active Timers**
+- Beautiful table display of all active timers
+- Shows timer IDs (shortened for readability)
+- Real-time countdown showing time left
+- Timer descriptions with truncation for long text
+- Status icons: ⏰ for active, 🔴 for expired
+- Summary statistics (active vs expired count)
+
+```
+📋 Active Timers (3 total):
+┌────────────────────────────────────────┬─────────────────┬──────────────────────────────────────────┐
+│ Timer ID                               │ Time Left       │ Description                              │
+├────────────────────────────────────────┼─────────────────┼──────────────────────────────────────────┤
+│ ⏰a1b2c3d4...e5f6                       │ 2m 15s          │ Session timeout for user123              │
+├────────────────────────────────────────┼─────────────────┼──────────────────────────────────────────┤
+│ ⏰f7g8h9i0...j1k2                       │ 45s 200ms       │ Cache expiration test                    │
+├────────────────────────────────────────┼─────────────────┼──────────────────────────────────────────┤
+│ 🔴l3m4n5o6...p7q8                       │ Expired         │ Demo: Quick 3-second timer               │
+└────────────────────────────────────────┴─────────────────┴──────────────────────────────────────────┘
+
+📊 Summary: 2 active, 1 expired
+```
+
+**4. Remove Specific Timer**
+- Shows current active timers
+- Remove timers by entering just the first 8 characters of UUID
+- Confirms removal with timer details
+- Handles errors gracefully
+
+**5. Timer Expiration Notifications**
+When timers expire, you'll see detailed notifications:
+
+```
+🔔 ═══════════════════════════════════════
+   TIMER EXPIRED!
+   ID: a1b2c3d4-e5f6-7890-1234-567890abcdef
+   Message: Session timeout for user123
+   Time: 2024-01-15 14:30:45 UTC
+   ═══════════════════════════════════════
+```
+
+### Demo Mode
+
+```bash
+cargo run demo
+```
+
+This automatically sets up several example timers with different durations and shows how the system handles multiple concurrent timers:
+
+- **3s**: Quick demonstration timer
+- **5s**: Session timeout simulation  
+- **8s**: Cache expiration test
+- **10s**: Retry mechanism timer
+- **1.5m**: Long running task
+
+Demo mode is perfect for:
+- Testing the timer system
+- Seeing expiration callbacks in action
+- Understanding timer behavior
+- Demonstrating persistence across restarts
+
+### Persistence Testing
+
+To test the persistence feature:
+
+1. Run the application and set some long-duration timers (e.g., `"2m"`)
