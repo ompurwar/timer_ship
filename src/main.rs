@@ -112,7 +112,7 @@ impl TimerShip {
                     timer_data: timer_data_clone,
                 };
                 loop {
-                    let timer = timer_ship.get_expieing_timer();
+                    let timer = timer_ship.get_expiring_timer();
                     if let Some(timer) = timer {
                         let now = std::time::UNIX_EPOCH.elapsed().unwrap().as_secs();
                         if timer.is_expired(now) {
@@ -137,7 +137,7 @@ impl TimerShip {
 
         ts
     }
-    fn get_expieing_timer(&self) -> Option<Timer> {
+    fn get_expiring_timer(&self) -> Option<Timer> {
         self.timers.peek_timer()
     }
     fn set_timer(&self, expires_at: u64, data: String) -> u64 {
@@ -145,6 +145,7 @@ impl TimerShip {
         let timer_id = new_timer.id;
         self.timer_data.add_data(timer_id, data);
         self.timers.add_timer(new_timer);
+
         timer_id
     }
     fn remove_timer(&self, timer_id: u64) -> Option<String> {
