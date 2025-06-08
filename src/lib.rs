@@ -5,11 +5,13 @@
 pub mod timer;
 pub mod oplog;
 pub mod timer_ship;
+pub mod duration_parser;
 
 pub use timer_ship::TimerShip;
 pub use timer::Timer;
 pub use oplog::{LogEntry, LogOperation};
 pub use uuid::Uuid;
+pub use duration_parser::{parse_duration, ParseError};
 
 /// Result type for timer operations
 pub type TimerResult<T> = std::io::Result<T>;

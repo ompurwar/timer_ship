@@ -1,4 +1,5 @@
 use crate::{
+    duration_parser::{current_time_ms, parse_duration, ParseError},
     oplog::{LogEntry, LogOperation, OpLog},
     timer::{Timer, TimerData, Timers},
 };
@@ -52,14 +53,15 @@ impl TimerShip {
                 loop {
                     let timer = timer_ship.get_expiring_timer();
                     if let Some(timer) = timer {
-                        let now = std::time::UNIX_EPOCH.elapsed().unwrap().as_secs();
+                        let now = current_time_ms();
                         if timer.is_expired(now) {
                             match timer_ship.remove_timer(timer.id) {
                                 Ok(data) => println!("Timer expired: {:?} : at: {}", data, now),
                                 Err(e) => eprintln!("Error removing expired timer: {}", e),
                             }
                         } else {
-                            let sleep_duration = Duration::from_secs(timer.get_time_left(now));
+                            let sleep_duration_ms = timer.get_time_left(now);
+                            let sleep_duration = Duration::from_millis(sleep_duration_ms);
                             println!("Waiting for timer to expire: {:?}", timer);
                             thread::sleep(sleep_duration);
                         }
@@ -115,7 +117,37 @@ impl TimerShip {
 
         // Log the operation first
         let log_entry = LogEntry {
-            timestamp: std::time::UNIX_EPOCH.elapsed().unwrap().as_secs(),
+            timestamp: current_time_ms(),
+            operation: LogOperation::SetTimer {
+                timer_id,
+                expires_at,
+                data: data.clone(),
+            },
+        };
+        self.oplog.append_log(log_entry)?;
+
+        // Then apply the operation
+        self.timer_data.add_data(timer_id, data);
+        self.timers.add_timer(new_timer);
+
+        Ok(timer_id)
+    }
+
+    /// Sets a new timer with duration string (e.g., "1.5s", "100ms", "2m")
+    pub fn set_timer_with_duration(&self, duration_str: &str, data: String) -> Result<Uuid, Box<dyn std::error::Error>> {
+        let duration_ms = parse_duration(duration_str)?;
+        let expires_at = current_time_ms() + duration_ms;
+        Ok(self.set_timer_at(expires_at, data)?)
+    }
+
+    /// Sets a new timer with absolute expiration time in milliseconds
+    pub fn set_timer_at(&self, expires_at: u64, data: String) -> std::io::Result<Uuid> {
+        let new_timer = Timer::new(expires_at);
+        let timer_id = new_timer.id;
+
+        // Log the operation first
+        let log_entry = LogEntry {
+            timestamp: current_time_ms(),
             operation: LogOperation::SetTimer {
                 timer_id,
                 expires_at,
@@ -135,7 +167,7 @@ impl TimerShip {
     pub fn remove_timer(&self, timer_id: Uuid) -> std::io::Result<Option<String>> {
         // Log the operation first
         let log_entry = LogEntry {
-            timestamp: std::time::UNIX_EPOCH.elapsed().unwrap().as_secs(),
+            timestamp: current_time_ms(),
             operation: LogOperation::RemoveTimer { timer_id },
         };
         self.oplog.append_log(log_entry)?;
