@@ -14,18 +14,39 @@ use std::{
 };
 use uuid::Uuid;
 
+/// Callback function type for timer expiration
+pub type TimerCallback = Box<dyn Fn(Uuid, String) + Send + Sync>;
+
 /// Main timer management system with persistent operation logging
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TimerShip {
     timers: Arc<Timers>,
     timer_data: Arc<TimerData>,
     oplog: Arc<OpLog>,
     recovery_complete: Arc<AtomicBool>,
+    callback: Option<Arc<TimerCallback>>,
+}
+
+impl std::fmt::Debug for TimerShip {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TimerShip")
+            .field("timers", &self.timers)
+            .field("timer_data", &self.timer_data)
+            .field("oplog", &self.oplog)
+            .field("recovery_complete", &self.recovery_complete)
+            .field("has_callback", &self.callback.is_some())
+            .finish()
+    }
 }
 
 impl TimerShip {
     /// Creates a new TimerShip with operation logging
     pub fn new(log_path: &str) -> std::io::Result<Self> {
+        Self::with_callback(log_path, None)
+    }
+
+    /// Creates a new TimerShip with operation logging and expiration callback
+    pub fn with_callback(log_path: &str, callback: Option<TimerCallback>) -> std::io::Result<Self> {
         let oplog = Arc::new(OpLog::new(log_path)?);
         let recovery_complete = Arc::new(AtomicBool::new(false));
 
@@ -34,6 +55,7 @@ impl TimerShip {
             timer_data: Arc::new(TimerData::new()),
             oplog,
             recovery_complete: recovery_complete.clone(),
+            callback: callback.map(Arc::new),
         };
 
         // Recover from logs before starting the timer thread
@@ -56,8 +78,16 @@ impl TimerShip {
                     if let Some(timer) = timer {
                         let now = current_time_ms();
                         if timer.is_expired(now) {
-                            match timer_ship.remove_timer(timer.id) {
-                                Ok(data) => info!("Timer expired: {:?} : at: {}", data, now),
+                            let timer_id = timer.id;
+                            match timer_ship.remove_timer(timer_id) {
+                                Ok(data) => {
+                                    info!("Timer expired: ID {} : at: {}", timer_id, now);
+                                    
+                                    // Call the expiration callback if provided
+                                    if let (Some(callback), Some(data)) = (&timer_ship.callback, data) {
+                                        callback(timer_id, data);
+                                    }
+                                },
                                 Err(e) => error!("Error removing expired timer: {}", e),
                             }
                         } else {
