@@ -4,6 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use uuid::Uuid;
+use log::{warn};
 
 /// Represents different timer operations that can be logged
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -67,7 +68,7 @@ impl OpLog {
             if !line.trim().is_empty() {
                 match serde_json::from_str::<LogEntry>(&line) {
                     Ok(entry) => entries.push(entry),
-                    Err(e) => eprintln!("Failed to deserialize log entry: {}", e),
+                    Err(e) => warn!("Failed to deserialize log entry: {}", e),
                 }
             }
         }

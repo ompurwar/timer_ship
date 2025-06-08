@@ -1,7 +1,17 @@
 use timer_util::TimerShip;
 use std::{thread, time::Duration};
+use log::{info, error};
+use env_logger;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize the logger with default level if RUST_LOG is not set
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var("RUST_LOG", "info");
+    }
+    env_logger::init();
+
+    info!("Starting timer utility application");
+
     // Example usage of TimerShip with oplog
     let timer_ship = TimerShip::new("timer_operations.log")?;
 
@@ -10,8 +20,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Use duration string instead of absolute time
         match timer_ship.set_timer_with_duration("20s", "Timer with 20 seconds".to_string()) {
-            Ok(timer_id) => println!("Set timer with ID: {}", timer_id),
-            Err(e) => eprintln!("Failed to set timer: {}", e),
+            Ok(timer_id) => info!("Set timer with ID: {}", timer_id),
+            Err(e) => error!("Failed to set timer: {}", e),
         }
 
         // Example with different durations

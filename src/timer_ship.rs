@@ -1,8 +1,9 @@
 use crate::{
-    duration_parser::{current_time_ms, parse_duration, ParseError},
+    duration_parser::{current_time_ms, parse_duration},
     oplog::{LogEntry, LogOperation, OpLog},
     timer::{Timer, TimerData, Timers},
 };
+use log::{debug, error, info, warn};
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -38,7 +39,7 @@ impl TimerShip {
         // Recover from logs before starting the timer thread
         ts.recover_from_logs()?;
         recovery_complete.store(true, Ordering::Relaxed);
-        println!("Recovery from logs completed.");
+        info!("Recovery from logs completed.");
 
         // Start the timer processing thread only after recovery
         {
@@ -49,20 +50,20 @@ impl TimerShip {
                     thread::sleep(Duration::from_millis(10));
                 }
 
-                println!("Timer processing thread started.");
+                info!("Timer processing thread started.");
                 loop {
                     let timer = timer_ship.get_expiring_timer();
                     if let Some(timer) = timer {
                         let now = current_time_ms();
                         if timer.is_expired(now) {
                             match timer_ship.remove_timer(timer.id) {
-                                Ok(data) => println!("Timer expired: {:?} : at: {}", data, now),
-                                Err(e) => eprintln!("Error removing expired timer: {}", e),
+                                Ok(data) => info!("Timer expired: {:?} : at: {}", data, now),
+                                Err(e) => error!("Error removing expired timer: {}", e),
                             }
                         } else {
                             let sleep_duration_ms = timer.get_time_left(now);
                             let sleep_duration = Duration::from_millis(sleep_duration_ms);
-                            println!("Waiting for timer to expire: {:?}", timer);
+                            debug!("Waiting for timer to expire: {:?}", timer);
                             thread::sleep(sleep_duration);
                         }
                     } else {
@@ -77,7 +78,7 @@ impl TimerShip {
 
     /// Recovers timer state from operation logs
     fn recover_from_logs(&self) -> std::io::Result<()> {
-        println!("Starting recovery from logs...");
+        info!("Starting recovery from logs...");
         let logs = self.oplog.read_logs()?;
         let log_count = logs.len();
 
@@ -91,17 +92,17 @@ impl TimerShip {
                     let timer = Timer::with_id(*expires_at, *timer_id);
                     self.timer_data.add_data(*timer_id, data.clone());
                     self.timers.add_timer(timer);
-                    println!("Recovered SetTimer: ID {}, expires_at {}", timer_id, expires_at);
+                    debug!("Recovered SetTimer: ID {}, expires_at {}", timer_id, expires_at);
                 }
                 LogOperation::RemoveTimer { timer_id } => {
                     self.timers.remove_timer(*timer_id);
                     self.timer_data.remove_data(*timer_id);
-                    println!("Recovered RemoveTimer: ID {}", timer_id);
+                    debug!("Recovered RemoveTimer: ID {}", timer_id);
                 }
             }
         }
 
-        println!("Recovery completed. Processed {} log entries.", log_count);
+        info!("Recovery completed. Processed {} log entries.", log_count);
         Ok(())
     }
 
@@ -180,9 +181,9 @@ impl TimerShip {
         self.timers.remove_timer(timer_id);
         let data = self.timer_data.remove_data(timer_id);
         if let Some(ref data_str) = data {
-            println!("Removed timer data: {}", data_str);
+            debug!("Removed timer data: {}", data_str);
         } else {
-            println!("No data found for timer ID: {}", timer_id);
+            warn!("No data found for timer ID: {}", timer_id);
         }
         data
     }
