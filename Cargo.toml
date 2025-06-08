@@ -2,7 +2,24 @@
 name = "timer_util"
 version = "0.1.0"
 edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "A persistent timer utility with operation logging for failure recovery"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/yourusername/timer_util"
+keywords = ["timer", "persistence", "logging", "recovery"]
+categories = ["asynchronous", "data-structures"]
+
+[lib]
+name = "timer_util"
+path = "src/lib.rs"
+
+[[bin]]
+name = "timer_util"
+path = "src/main.rs"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+
+[dev-dependencies]
+# Add test dependencies here if needed
