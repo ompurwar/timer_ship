@@ -1,8 +1,128 @@
-use timer_util::{TimerShip, TimerCallback};
-use std::{thread, time::Duration};
+use timer_ship::{TimerShip, TimerCallback};
+use std::{io::{self, Write}, thread, time::Duration};
 use log::{info, error};
 use env_logger;
 use uuid::Uuid;
+
+fn print_menu() {
+    println!("\n🚢 Timer Ship - Interactive CLI");
+    println!("═══════════════════════════════");
+    println!("1. Set timer with duration");
+    println!("2. List duration format examples");
+    println!("3. View active timers (not implemented)");
+    println!("4. Exit");
+    println!("\nDuration formats:");
+    println!("  • Milliseconds: 100ms, 1500ms (integers only)");
+    println!("  • Seconds: 1s, 2.5s, 30s");
+    println!("  • Minutes: 1m, 1.5m, 45m");
+    println!("  • Hours: 1h, 2.5hr, 24hr");
+    println!("═══════════════════════════════");
+}
+
+fn get_user_input(prompt: &str) -> String {
+    print!("{}", prompt);
+    io::stdout().flush().unwrap();
+    
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+    input.trim().to_string()
+}
+
+fn show_duration_examples() {
+    println!("\n📝 Duration Format Examples:");
+    println!("┌─────────────┬─────────────────┬─────────────────────────┐");
+    println!("│ Format      │ Example         │ Description             │");
+    println!("├─────────────┼─────────────────┼─────────────────────────┤");
+    println!("│ Milliseconds│ 100ms, 1500ms  │ Integer values only     │");
+    println!("│ Seconds     │ 1s, 2.5s, 30s  │ Float values supported  │");
+    println!("│ Minutes     │ 1m, 1.5m, 45m  │ Float values supported  │");
+    println!("│ Hours       │ 1h, 2.5hr, 24h │ Float values supported  │");
+    println!("└─────────────┴─────────────────┴─────────────────────────┘");
+    
+    println!("\n💡 Examples:");
+    println!("  • '500ms' - 500 milliseconds");
+    println!("  • '5s' - 5 seconds");
+    println!("  • '2.5m' - 2 minutes and 30 seconds");
+    println!("  • '1.5hr' - 1 hour and 30 minutes");
+    println!("  • '0.5h' - 30 minutes");
+}
+
+fn interactive_mode(timer_ship: &TimerShip) {
+    loop {
+        print_menu();
+        
+        let choice = get_user_input("\nEnter your choice (1-4): ");
+        
+        match choice.as_str() {
+            "1" => {
+                let duration = get_user_input("Enter duration (e.g., 5s, 1.5m, 2hr): ");
+                
+                if duration.is_empty() {
+                    println!("❌ Duration cannot be empty!");
+                    continue;
+                }
+                
+                let message = get_user_input("Enter timer message/description: ");
+                let final_message = if message.is_empty() {
+                    format!("Timer set for {}", duration)
+                } else {
+                    message
+                };
+                
+                match timer_ship.set_timer_with_duration(&duration, final_message) {
+                    Ok(timer_id) => {
+                        println!("✅ Timer set successfully!");
+                        println!("   ID: {}", timer_id);
+                        println!("   Duration: {}", duration);
+                        println!("   The timer will fire and log the message when it expires.");
+                    },
+                    Err(e) => {
+                        println!("❌ Failed to set timer: {}", e);
+                        println!("   Please check your duration format.");
+                    }
+                }
+            },
+            "2" => {
+                show_duration_examples();
+            },
+            "3" => {
+                println!("⚠️  List active timers feature not implemented yet.");
+            },
+            "4" => {
+                println!("👋 Goodbye! Timers will continue running in background...");
+                break;
+            },
+            _ => {
+                println!("❌ Invalid choice. Please enter 1-4.");
+            }
+        }
+        
+        println!("\nPress Enter to continue...");
+        let _ = get_user_input("");
+    }
+}
+
+fn demo_mode(timer_ship: &TimerShip) {
+    info!("🎮 Running in demo mode - setting example timers...");
+    
+    // Set some example timers
+    let examples = vec![
+        ("3s", "Demo: Quick 3-second timer"),
+        ("5s", "Demo: Session timeout simulation"),
+        ("8s", "Demo: Cache expiration test"),
+        ("10s", "Demo: Retry mechanism timer"),
+        ("1.5m", "Demo: Long running task"),
+    ];
+    
+    for (duration, message) in examples {
+        match timer_ship.set_timer_with_duration(duration, message.to_string()) {
+            Ok(timer_id) => info!("✅ Set demo timer: {} - {}", duration, timer_id),
+            Err(e) => error!("❌ Failed to set demo timer {}: {}", duration, e),
+        }
+    }
+    
+    info!("🎯 Demo timers set! Watch for expiration messages...");
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize the logger with default level if RUST_LOG is not set
@@ -11,54 +131,62 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     env_logger::init();
 
-    info!("Starting timer utility application");
+    println!("🚢 Starting Timer Ship Application");
 
     // Create a callback function for timer expiration
     let callback: TimerCallback = Box::new(|timer_id: Uuid, data: String| {
-        info!("🔔 Timer callback fired! ID: {}, Data: {}", timer_id, data);
+        println!("\n🔔 ═══════════════════════════════════════");
+        println!("   TIMER EXPIRED!");
+        println!("   ID: {}", timer_id);
+        println!("   Message: {}", data);
+        println!("   Time: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC"));
+        println!("   ═══════════════════════════════════════");
         
-        // Here you can add your custom logic:
-        // - Send notifications
-        // - Execute scheduled tasks
-        // - Clean up resources
-        // - Trigger other operations
+        // Log to the application log as well
+        info!("🔔 Timer expired - ID: {}, Message: {}", timer_id, data);
         
+        // Custom logic based on message content
         match data.as_str() {
-            s if s.contains("session:") => {
-                info!("Session expired, cleaning up user session");
+            s if s.contains("session") || s.contains("Session") => {
+                info!("🔐 Session management: Timer expired");
             },
-            s if s.contains("cache_key:") => {
-                info!("Cache entry expired, removing from cache");
+            s if s.contains("cache") || s.contains("Cache") => {
+                info!("💾 Cache management: Entry expired");
             },
-            s if s.contains("retry_task:") => {
-                info!("Retry timer expired, executing retry logic");
+            s if s.contains("retry") || s.contains("Retry") => {
+                info!("🔄 Retry mechanism: Executing retry logic");
+            },
+            s if s.contains("Demo:") => {
+                info!("🎮 Demo timer completed");
             },
             _ => {
-                info!("Generic timer expired: {}", data);
+                info!("⏰ Generic timer completed");
             }
         }
     });
 
-    // Example usage of TimerShip with callback
+    // Create TimerShip with callback
     let timer_ship = TimerShip::with_callback("timer_operations.log", Some(callback))?;
-
-    // Set some example timers
-    let _ = timer_ship.set_timer_with_duration("5s", "session:user123".to_string());
-    let _ = timer_ship.set_timer_with_duration("3s", "cache_key:data456".to_string());
-    let _ = timer_ship.set_timer_with_duration("8s", "retry_task:job789".to_string());
-
-    loop {
-        thread::sleep(Duration::from_secs(10));
-
-        // Use duration string instead of absolute time
-        match timer_ship.set_timer_with_duration("20s", "Timer with 20 seconds".to_string()) {
-            Ok(timer_id) => info!("Set timer with ID: {}", timer_id),
-            Err(e) => error!("Failed to set timer: {}", e),
+    
+    // Check command line arguments for mode
+    let args: Vec<String> = std::env::args().collect();
+    let mode = args.get(1).map(|s| s.as_str()).unwrap_or("interactive");
+    
+    match mode {
+        "demo" => {
+            demo_mode(&timer_ship);
+            
+            // Keep the application running to see timer expirations
+            println!("⏳ Demo mode active. Press Ctrl+C to exit.");
+            loop {
+                thread::sleep(Duration::from_secs(1));
+            }
+        },
+        "interactive" | _ => {
+            info!("🎮 Starting interactive mode");
+            interactive_mode(&timer_ship);
         }
-
-        // Example with different durations
-        let _ = timer_ship.set_timer_with_duration("1.5m", "Timer with 1.5 minutes".to_string());
-        let _ = timer_ship.set_timer_with_duration("500ms", "Timer with 500 milliseconds".to_string());
-        let _ = timer_ship.set_timer_with_duration("2hr", "Timer with 2 hours".to_string());
     }
+    
+    Ok(())
 }
