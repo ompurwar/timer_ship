@@ -1,12 +1,79 @@
 use std::{
     collections::HashMap,
+    fs::{File, OpenOptions},
+    io::{BufRead, BufReader, BufWriter, Write},
     sync::{
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
-        atomic::{AtomicU64, Ordering},
     },
     thread::{self},
     time::Duration,
 };
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+enum LogOperation {
+    SetTimer {
+        timer_id: u64,
+        expires_at: u64,
+        data: String,
+    },
+    RemoveTimer {
+        timer_id: u64,
+    },
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct LogEntry {
+    timestamp: u64,
+    operation: LogOperation,
+}
+
+#[derive(Debug, Clone)]
+struct OpLog {
+    file: Arc<Mutex<BufWriter<File>>>,
+    log_path: String,
+}
+
+impl OpLog {
+    fn new(log_path: &str) -> std::io::Result<Self> {
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log_path)?;
+
+        Ok(OpLog {
+            file: Arc::new(Mutex::new(BufWriter::new(file))),
+            log_path: log_path.to_string(),
+        })
+    }
+
+    fn append_log(&self, entry: LogEntry) -> std::io::Result<()> {
+        let mut file = self.file.lock().expect("Failed to lock log file");
+        let serialized = serde_json::to_string(&entry)?;
+        writeln!(file, "{}", serialized)?;
+        file.flush()?;
+        drop(file);
+        Ok(())
+    }
+
+    fn read_logs(&self) -> std::io::Result<Vec<LogEntry>> {
+        let file = File::open(&self.log_path)?;
+        let reader = BufReader::new(file);
+        let mut entries = Vec::new();
+
+        for line in reader.lines() {
+            let line = line?;
+            if !line.trim().is_empty() {
+                match serde_json::from_str::<LogEntry>(&line) {
+                    Ok(entry) => entries.push(entry),
+                    Err(e) => eprintln!("Failed to deserialize log entry: {}", e),
+                }
+            }
+        }
+
+        Ok(entries)
+    }
+}
 
 #[derive(Debug, Clone)]
 struct Timer {
@@ -91,26 +158,42 @@ impl TimerData {
         data
     }
 }
+#[derive(Debug, Clone)]
 struct TimerShip {
     timers: Arc<Timers>,
     timer_data: Arc<TimerData>,
+    oplog: Arc<OpLog>,
+    recovery_complete: Arc<AtomicBool>,
 }
 
 impl TimerShip {
-    fn new() -> Self {
+    fn new(log_path: &str) -> std::io::Result<Self> {
+        let oplog = Arc::new(OpLog::new(log_path)?);
+        let recovery_complete = Arc::new(AtomicBool::new(false));
+
         let ts = TimerShip {
             timers: Arc::new(Timers::new()),
             timer_data: Arc::new(TimerData::new()),
+            oplog,
+            recovery_complete: recovery_complete.clone(),
         };
+
+        // Recover from logs before starting the timer thread
+        ts.recover_from_logs()?;
+        recovery_complete.store(true, Ordering::Relaxed);
+        println!("Recovery from logs completed.");
+
+        // Start the timer processing thread only after recovery
         {
-            let timers_clone = Arc::clone(&ts.timers);
-            let timer_data_clone = Arc::clone(&ts.timer_data);
-            println!("TimerShip initialized with empty timers and timer data.");
+            let timer_ship = ts.clone();
             thread::spawn(move || {
-                let timer_ship = TimerShip {
-                    timers: timers_clone,
-                    timer_data: timer_data_clone,
-                };
+
+                // Wait for recovery to complete
+                while !timer_ship.recovery_complete.load(Ordering::Relaxed) {
+                    thread::sleep(Duration::from_millis(10));
+                }
+
+                println!("Timer processing thread started.");
                 loop {
                     let timer = timer_ship.get_expiring_timer();
                     if let Some(timer) = timer {
@@ -121,34 +204,95 @@ impl TimerShip {
                                 timer_ship.remove_timer(timer.id),
                                 now
                             );
-                        // code to send expire time to timer executor via cross beam workers
                         } else {
                             let sleep_duration = Duration::from_secs(timer.get_time_left(now));
-                            println!("Waiting for timer to expire: {:?},", timer);
+                            println!("Waiting for timer to expire: {:?}", timer);
                             thread::sleep(sleep_duration);
                         }
                     } else {
                         thread::sleep(Duration::from_millis(100));
-                        // println!("No timers available.");
                     }
                 }
             });
-        };
+        }
 
-        ts
+        Ok(ts)
     }
+
+    fn recover_from_logs(&self) -> std::io::Result<()> {
+        println!("Starting recovery from logs...");
+        let logs = self.oplog.read_logs()?;
+        let log_count = logs.len();
+
+        for entry in &logs {
+            match &entry.operation {
+                LogOperation::SetTimer {
+                    timer_id,
+                    expires_at,
+                    data,
+                } => {
+                    let timer = Timer {
+                        expires_at: *expires_at,
+                        id: *timer_id,
+                    };
+                    self.timer_data.add_data(*timer_id, data.clone());
+                    self.timers.add_timer(timer);
+                    println!(
+                        "Recovered SetTimer: ID {}, expires_at {}",
+                        timer_id, expires_at
+                    );
+                }
+                LogOperation::RemoveTimer { timer_id } => {
+                    self.timers.remove_timer(*timer_id);
+                    self.timer_data.remove_data(*timer_id);
+                    println!("Recovered RemoveTimer: ID {}", timer_id);
+                }
+            }
+        }
+
+        println!("Recovery completed. Processed {} log entries.", log_count);
+        Ok(())
+    }
+
     fn get_expiring_timer(&self) -> Option<Timer> {
         self.timers.peek_timer()
     }
-    fn set_timer(&self, expires_at: u64, data: String) -> u64 {
+
+    fn set_timer(&self, expires_at: u64, data: String) -> std::io::Result<u64> {
         let new_timer = Timer::new(expires_at);
         let timer_id = new_timer.id;
+
+        // Log the operation first
+        let log_entry = LogEntry {
+            timestamp: std::time::UNIX_EPOCH.elapsed().unwrap().as_secs(),
+            operation: LogOperation::SetTimer {
+                timer_id,
+                expires_at,
+                data: data.clone(),
+            },
+        };
+        self.oplog.append_log(log_entry)?;
+
+        // Then apply the operation
         self.timer_data.add_data(timer_id, data);
         self.timers.add_timer(new_timer);
 
-        timer_id
+        Ok(timer_id)
     }
-    fn remove_timer(&self, timer_id: u64) -> Option<String> {
+
+    fn remove_timer(&self, timer_id: u64) -> std::io::Result<Option<String>> {
+        // Log the operation first
+        let log_entry = LogEntry {
+            timestamp: std::time::UNIX_EPOCH.elapsed().unwrap().as_secs(),
+            operation: LogOperation::RemoveTimer { timer_id },
+        };
+        self.oplog.append_log(log_entry)?;
+
+        // Then apply the operation
+        Ok(self.remove_timer_internal(timer_id))
+    }
+
+    fn remove_timer_internal(&self, timer_id: u64) -> Option<String> {
         self.timers.remove_timer(timer_id);
         let data = self.timer_data.remove_data(timer_id);
         if let Some(ref data_str) = data {
@@ -160,15 +304,17 @@ impl TimerShip {
     }
 }
 
-fn main() {
-    // Example usage of TimerShip
-    let timer_ship = TimerShip::new();
+fn main() -> std::io::Result<()> {
+    // Example usage of TimerShip with oplog
+    let timer_ship = TimerShip::new("timer_operations.log")?;
+
     loop {
         thread::sleep(Duration::from_secs(5));
         let now = std::time::UNIX_EPOCH.elapsed().unwrap().as_secs();
 
-        let timer_id4 = timer_ship.set_timer(now + 20, "Timer 4".to_string());
-        println!("Set timer with ID: {}", timer_id4);
+        match timer_ship.set_timer(now + 20, "Timer 4".to_string()) {
+            Ok(timer_id) => println!("Set timer with ID: {}", timer_id),
+            Err(e) => eprintln!("Failed to set timer: {}", e),
+        }
     }
-    // Simulate some delay before removing a timer
 }
