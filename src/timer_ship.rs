@@ -10,6 +10,7 @@ use std::{
     thread::{self},
     time::Duration,
 };
+use uuid::Uuid;
 
 /// Main timer management system with persistent operation logging
 #[derive(Debug, Clone)]
@@ -108,7 +109,7 @@ impl TimerShip {
     }
 
     /// Sets a new timer with associated data
-    pub fn set_timer(&self, expires_at: u64, data: String) -> std::io::Result<u64> {
+    pub fn set_timer(&self, expires_at: u64, data: String) -> std::io::Result<Uuid> {
         let new_timer = Timer::new(expires_at);
         let timer_id = new_timer.id;
 
@@ -131,7 +132,7 @@ impl TimerShip {
     }
 
     /// Removes a timer and returns its associated data
-    pub fn remove_timer(&self, timer_id: u64) -> std::io::Result<Option<String>> {
+    pub fn remove_timer(&self, timer_id: Uuid) -> std::io::Result<Option<String>> {
         // Log the operation first
         let log_entry = LogEntry {
             timestamp: std::time::UNIX_EPOCH.elapsed().unwrap().as_secs(),
@@ -143,7 +144,7 @@ impl TimerShip {
         Ok(self.remove_timer_internal(timer_id))
     }
 
-    fn remove_timer_internal(&self, timer_id: u64) -> Option<String> {
+    fn remove_timer_internal(&self, timer_id: Uuid) -> Option<String> {
         self.timers.remove_timer(timer_id);
         let data = self.timer_data.remove_data(timer_id);
         if let Some(ref data_str) = data {

@@ -3,17 +3,18 @@ use std::{
     io::{BufRead, BufReader, BufWriter, Write},
     sync::{Arc, Mutex},
 };
+use uuid::Uuid;
 
 /// Represents different timer operations that can be logged
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum LogOperation {
     SetTimer {
-        timer_id: u64,
+        timer_id: Uuid,
         expires_at: u64,
         data: String,
     },
     RemoveTimer {
-        timer_id: u64,
+        timer_id: Uuid,
     },
 }
 

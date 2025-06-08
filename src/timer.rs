@@ -1,16 +1,16 @@
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc, Mutex,
     },
 };
+use uuid::Uuid;
 
 /// Represents a single timer with expiration time and unique ID
 #[derive(Debug, Clone)]
 pub struct Timer {
     pub expires_at: u64,
-    pub id: u64,
+    pub id: Uuid,
 }
 
 impl Timer {
@@ -18,18 +18,13 @@ impl Timer {
     pub fn new(expires_at: u64) -> Self {
         Timer {
             expires_at,
-            id: Timer::generate_id(),
+            id: Uuid::new_v4(),
         }
     }
 
     /// Creates a timer with a specific ID (used for recovery)
-    pub fn with_id(expires_at: u64, id: u64) -> Self {
+    pub fn with_id(expires_at: u64, id: Uuid) -> Self {
         Timer { expires_at, id }
-    }
-
-    fn generate_id() -> u64 {
-        static COUNTER: AtomicU64 = AtomicU64::new(1);
-        COUNTER.fetch_add(1, Ordering::Relaxed)
     }
 
     /// Checks if the timer has expired
@@ -74,7 +69,7 @@ impl Timers {
         result
     }
 
-    pub fn remove_timer(&self, timer_id: u64) {
+    pub fn remove_timer(&self, timer_id: Uuid) {
         let mut local_timers = self.timers.lock().expect("Failed to lock mutex");
         if let Some(pos) = local_timers.iter().position(|x| x.id == timer_id) {
             local_timers.remove(pos);
@@ -92,7 +87,7 @@ impl Default for Timers {
 /// Container for timer-associated data
 #[derive(Debug, Clone)]
 pub struct TimerData {
-    data: Arc<Mutex<HashMap<u64, String>>>,
+    data: Arc<Mutex<HashMap<Uuid, String>>>,
 }
 
 impl TimerData {
@@ -102,13 +97,13 @@ impl TimerData {
         }
     }
 
-    pub fn add_data(&self, timer_id: u64, data: String) {
+    pub fn add_data(&self, timer_id: Uuid, data: String) {
         let mut local_data = self.data.lock().expect("Failed to lock mutex");
         local_data.insert(timer_id, data);
         drop(local_data);
     }
 
-    pub fn remove_data(&self, timer_id: u64) -> Option<String> {
+    pub fn remove_data(&self, timer_id: Uuid) -> Option<String> {
         let mut local_data = self.data.lock().expect("Failed to lock mutex");
         let data = local_data.remove(&timer_id);
         drop(local_data);

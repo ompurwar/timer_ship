@@ -9,6 +9,7 @@ pub mod timer_ship;
 pub use timer_ship::TimerShip;
 pub use timer::Timer;
 pub use oplog::{LogEntry, LogOperation};
+pub use uuid::Uuid;
 
 /// Result type for timer operations
 pub type TimerResult<T> = std::io::Result<T>;
