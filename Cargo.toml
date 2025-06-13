@@ -17,6 +17,10 @@ path = "src/lib.rs"
 name = "timer_ship"
 path = "src/main.rs"
 
+[features]
+default = []
+performance-tests = []
+
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -26,4 +30,8 @@ env_logger = "0.11.8"
 chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
-# Add test dependencies here if needed
+criterion = "0.5"
+
+[[bench]]
+name = "timer_benchmarks"
+harness = false

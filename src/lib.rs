@@ -7,6 +7,9 @@ pub mod oplog;
 pub mod timer_ship;
 pub mod duration_parser;
 
+#[cfg(feature = "performance-tests")]
+pub mod performance_tests;
+
 pub use timer_ship::{TimerShip, TimerCallback, TimerInfo};
 pub use timer::Timer;
 pub use oplog::{LogEntry, LogOperation};
