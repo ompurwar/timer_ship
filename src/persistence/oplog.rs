@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use uuid::Uuid;
-use log::{warn};
+use log::warn;
 
 /// Represents different timer operations that can be logged
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

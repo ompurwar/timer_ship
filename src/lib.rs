@@ -2,19 +2,20 @@
 //! 
 //! A persistent timer system with operation logging for failure recovery.
 
-pub mod timer;
-pub mod oplog;
+pub mod core;
+pub mod persistence;
+pub mod utils;
 pub mod timer_ship;
-pub mod duration_parser;
 
 #[cfg(feature = "performance-tests")]
-pub mod performance_tests;
+pub mod testing;
 
+// Re-export main types
 pub use timer_ship::{TimerShip, TimerCallback, TimerInfo};
-pub use timer::Timer;
-pub use oplog::{LogEntry, LogOperation};
+pub use core::Timer;
+pub use persistence::{LogEntry, LogOperation};
+pub use utils::{parse_duration, ParseError};
 pub use uuid::Uuid;
-pub use duration_parser::{parse_duration, ParseError};
 
 /// Result type for timer operations
 pub type TimerResult<T> = std::io::Result<T>;
