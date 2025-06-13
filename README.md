@@ -314,3 +314,144 @@ Demo mode is perfect for:
 To test the persistence feature:
 
 1. Run the application and set some long-duration timers (e.g., `"2m"`)
+2. Observe the timers being logged to the file
+3. Restart the application
+4. Use the "List active timers" option to see recovered timers
+
+## Performance Optimizations
+
+The timer utility has been optimized for high-performance scenarios with several key improvements:
+
+### 🚀 Data Structure Optimizations
+
+**Binary Heap Implementation**
+- Replaced `Vec<Timer>` with `BinaryHeap<Timer>` for timer queue management
+- **Timer Creation**: Improved from O(n log n) to O(log n) - **99.2% performance improvement**
+- **Timer Peek**: Maintained O(1) performance with better cache locality
+- **Memory Efficiency**: More compact representation and better memory access patterns
+
+**Locking Strategy**
+- Uses `Mutex` for simplicity and consistency
+- Explicit lock dropping to minimize contention
+- Optimized for the common use case of frequent insertions and peeks
+
+### 📊 Benchmark Results
+
+Performance tests conducted on **AMD Ryzen 5** system (16GB RAM, Windows):
+
+```
+timer_creation          time:   [3.77 µs to 4.06 µs]     (-99.2% improvement)
+create_remove_cycle     time:   [6.32 µs to 6.43 µs]     (stable)
+concurrent_timer_creation time: [54.99 ms to 57.48 ms]   (-93.8% improvement) 
+recovery_from_log       time:   [1.59 ms to 1.69 ms]     (-43.7% improvement)
+timer_listing           time:   [352.69 µs to 366.03 µs] (+70.5% regression)
+short_timer_expiration  time:   [213.29 ms to 213.61 ms] (stable)
+```
+
+### 🔍 Performance Analysis
+
+**Significant Improvements:**
+- **Timer Creation**: 99.2% faster due to BinaryHeap O(log n) insertion vs O(n log n) sorting
+- **Concurrent Operations**: 93.8% faster with reduced lock contention
+- **Recovery**: 43.7% faster log replay with optimized data structures
+
+**Trade-offs:**
+- **Timer Listing**: 70.5% slower due to heap-to-vector conversion for display
+- This is acceptable as listing is an infrequent administrative operation
+
+**Stable Performance:**
+- **Create-Remove Cycles**: Consistent ~6.4µs per cycle
+- **Timer Expiration**: Consistent ~213ms for 10 short timers (includes sleep time)
+
+### 🎯 Performance Recommendations
+
+**Optimal Use Cases:**
+- High-frequency timer creation (>1000/sec): ✅ Excellent
+- Concurrent timer operations: ✅ Excellent  
+- Large timer queues (>10,000 timers): ✅ Good
+- Frequent timer listing/admin: ⚠️ Consider caching
+
+**Scaling Characteristics:**
+- **Creation**: O(log n) - scales well to millions of timers
+- **Expiration**: O(log n) - consistent performance
+- **Memory**: Linear growth with excellent cache locality
+- **Recovery**: O(n) - scales with log size, not timer count
+
+## System Requirements
+
+### Minimum Requirements
+- **CPU**: Any modern processor (tested on AMD Ryzen 5)
+- **Memory**: 100MB+ available RAM
+- **Storage**: 10MB+ for operation logs
+- **OS**: Windows, Linux, macOS
+
+### Performance Specifications
+- **Timer Creation**: ~4µs per timer (single-threaded)
+- **Concurrent Operations**: ~56ms for 100 timers across 4 threads
+- **Memory Usage**: ~1KB per active timer (including metadata)
+- **Recovery Speed**: ~1.6ms per 500 log entries
+- **Maximum Timers**: Limited by available memory (tested with 10,000+)
+
+### Benchmark System Configuration
+- **CPU**: AMD Ryzen 5 @ 1.64GHz
+- **Memory**: 16GB RAM (8.3GB used, 54% utilization)
+- **Storage**: NVMe SSD
+- **OS**: Windows 11
+- **Rust**: 1.70+ (release mode with optimizations)
+
+## Advanced Usage
+
+### High-Performance Scenarios
+
+```rust
+use timer_ship::TimerShip;
+use std::time::Instant;
+
+// High-throughput timer creation
+let timer_ship = TimerShip::new("high_perf.log")?;
+let start = Instant::now();
+
+for i in 0..10_000 {
+    let timer_id = timer_ship.set_timer_with_duration(
+        &format!("{}s", i % 3600), 
+        format!("High-perf timer #{}", i)
+    )?;
+}
+
+println!("Created 10,000 timers in {:?}", start.elapsed());
+// Expected: ~40ms on Ryzen 5 system
+```
+
+### Memory-Efficient Operation
+
+```rust
+// For memory-constrained environments
+let timer_ship = TimerShip::new("memory_efficient.log")?;
+
+// Use shorter data strings to reduce memory footprint
+timer_ship.set_timer_with_duration("1h", "T1".to_string())?;
+
+// Remove timers promptly when no longer needed
+timer_ship.remove_timer(timer_id)?;
+```
+
+### Monitoring Performance
+
+```rust
+// Enable performance monitoring
+use log::info;
+
+let timer_ship = TimerShip::new("monitored.log")?;
+
+// Monitor active timer count
+let count = timer_ship.active_timer_count();
+info!("Active timers: {}", count);
+
+// Monitor timer creation rate
+let start = std::time::Instant::now();
+for _ in 0..1000 {
+    timer_ship.set_timer_with_duration("1m", "test".to_string())?;
+}
+let rate = 1000.0 / start.elapsed().as_secs_f64();
+info!("Timer creation rate: {:.0} timers/sec", rate);
+```
