@@ -1,5 +1,6 @@
 use std::{
-    collections::HashMap,
+    collections::{BinaryHeap, HashMap},
+    cmp::Ordering,
     sync::{
         Arc, Mutex,
     },
@@ -42,51 +43,89 @@ impl Timer {
     }
 }
 
-/// Container for managing multiple timers
+/// Wrapper for Timer to implement reverse ordering for min-heap behavior
+#[derive(Debug, Clone)]
+struct TimerHeapItem(Timer);
+
+impl PartialEq for TimerHeapItem {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.expires_at == other.0.expires_at
+    }
+}
+
+impl Eq for TimerHeapItem {}
+
+impl PartialOrd for TimerHeapItem {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for TimerHeapItem {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // Reverse ordering to make BinaryHeap behave as min-heap
+        other.0.expires_at.cmp(&self.0.expires_at)
+    }
+}
+
+/// Container for managing multiple timers using a min-heap
 #[derive(Debug, Clone)]
 pub struct Timers {
-    timers: Arc<Mutex<Vec<Timer>>>,
+    timers: Arc<Mutex<BinaryHeap<TimerHeapItem>>>,
 }
 
 impl Timers {
     pub fn new() -> Self {
         Timers {
-            timers: Arc::new(Mutex::new(Vec::new())),
+            timers: Arc::new(Mutex::new(BinaryHeap::new())),
         }
     }
 
     pub fn add_timer(&self, timer: Timer) {
         let mut local_timers = self.timers.lock().expect("Failed to lock mutex");
-        local_timers.push(timer);
-        local_timers.sort_by(|a, b| a.expires_at.cmp(&b.expires_at));
+        local_timers.push(TimerHeapItem(timer));
         drop(local_timers);
     }
 
     pub fn peek_timer(&self) -> Option<Timer> {
         let local_timers = self.timers.lock().expect("Failed to lock mutex");
-        let result = local_timers.first().cloned();
-        drop(local_timers);
-        result
+        local_timers.peek().map(|item| item.0.clone())
     }
 
     pub fn remove_timer(&self, timer_id: Uuid) {
         let mut local_timers = self.timers.lock().expect("Failed to lock mutex");
-        if let Some(pos) = local_timers.iter().position(|x| x.id == timer_id) {
-            local_timers.remove(pos);
-        }
+        
+        // Convert heap to vector, remove the timer, and rebuild heap
+        let mut timers_vec: Vec<TimerHeapItem> = local_timers.drain().collect();
+        timers_vec.retain(|item| item.0.id != timer_id);
+        
+        // Rebuild the heap from the filtered vector
+        *local_timers = timers_vec.into_iter().collect();
         drop(local_timers);
     }
 
-    /// Gets all timers (clone of the internal vector)
+    /// Gets all timers (clone of the internal heap as vector)
     pub fn get_all_timers(&self) -> Vec<Timer> {
         let local_timers = self.timers.lock().expect("Failed to lock mutex");
-        local_timers.clone()
+        local_timers.iter().map(|item| item.0.clone()).collect()
     }
     
     /// Gets the count of timers
     pub fn timer_count(&self) -> usize {
         let local_timers = self.timers.lock().expect("Failed to lock mutex");
         local_timers.len()
+    }
+
+    /// Pops the next timer to expire (removes and returns it)
+    pub fn pop_timer(&self) -> Option<Timer> {
+        let mut local_timers = self.timers.lock().expect("Failed to lock mutex");
+        local_timers.pop().map(|item| item.0)
+    }
+
+    /// Checks if the timer queue is empty
+    pub fn is_empty(&self) -> bool {
+        let local_timers = self.timers.lock().expect("Failed to lock mutex");
+        local_timers.is_empty()
     }
 }
 

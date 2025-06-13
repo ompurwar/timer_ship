@@ -125,16 +125,23 @@ impl TimerShip {
                         let now = current_time_ms();
                         if timer.is_expired(now) {
                             let timer_id = timer.id;
-                            match timer_ship.remove_timer(timer_id) {
-                                Ok(data) => {
-                                    info!("Timer expired: ID {} : at: {}", timer_id, now);
+                            // Use internal removal to avoid double logging
+                            let data = timer_ship.remove_timer_internal(timer_id);
+                            
+                            // Log the removal operation
+                            let log_entry = LogEntry {
+                                timestamp: now,
+                                operation: LogOperation::RemoveTimer { timer_id },
+                            };
+                            if let Err(e) = timer_ship.oplog.append_log(log_entry) {
+                                error!("Failed to log timer removal: {}", e);
+                            }
 
-                                    // Call the expiration callback if provided
-                                    if let (Some(callback), Some(data)) = (&timer_ship.callback, data) {
-                                        callback(timer_id, data);
-                                    }
-                                }
-                                Err(e) => error!("Error removing expired timer: {}", e),
+                            info!("Timer expired: ID {} : at: {}", timer_id, now);
+
+                            // Call the expiration callback if provided
+                            if let (Some(callback), Some(data)) = (&timer_ship.callback, data) {
+                                callback(timer_id, data);
                             }
                         } else {
                             let sleep_duration_ms = timer.get_time_left(now);
